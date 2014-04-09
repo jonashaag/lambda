@@ -1,4 +1,4 @@
-module Main where
+module Lambda where
 
 import Control.Arrow ((>>>))
 
@@ -15,28 +15,26 @@ maybeError check continue x = case check x of
 
 
 --- | Lambda calculus ---
-data Literal = LiteralInt Int
-             | LiteralString String
-
-instance Show Literal where
-  show (LiteralInt n)    = show n
-  show (LiteralString s) = show s
-
-
 type DeBruijnIdx = Int
 
 -- | Lambda calculus simplified to using only De Bruijn Indices.
-data DeBruijnLambda = DLiteral Literal
+data DeBruijnLambda = DInt Int
                     | DVar DeBruijnIdx
                     | DAbstr DeBruijnLambda
                     | DApp DeBruijnLambda DeBruijnLambda
-                    deriving Show
+
+instance Show DeBruijnLambda where
+  show (DInt i) = show i
+  show (DVar n) = "[" ++ show n ++ "]"
+  show (DAbstr body) = "(λ\n" ++ indent "  " (show body) ++ ")"
+  show (DApp abstr@(DApp _ _) expr) = "(" ++ show abstr ++ ") " ++ show expr
+  show (DApp abstr expr) = show abstr ++ " " ++ show expr
 
 
 -- | Original lambda calculus with single-argument abstraction and application.
 --   Also supports De Bruijn Indices since this data structure is used during
 --   the de-bruijnification (see 'deBruijnify').
-data SimpleLambda = SLiteral Literal
+data SimpleLambda = SInt Int
                   | SVar String
                   | SDeBruijnVar DeBruijnIdx
                   | SAbstr String SimpleLambda
@@ -45,17 +43,18 @@ data SimpleLambda = SLiteral Literal
                   --deriving Show
 
 instance Show SimpleLambda where
-  show (SLiteral l) = show l
+  show (SInt i) = show i
   show (SVar s) = s
   show (SDeBruijnVar n) = "[" ++ show n ++ "]"
   show (SAbstr name body) = "(λ " ++ name ++ " -> \n" ++ indent "  " (show body) ++ ")"
   show (SDeBruijnAbstr body) = "(λ\n" ++ indent "  " (show body) ++ ")"
+  show (SApp abstr@(SApp _ _) expr) = "(" ++ show abstr ++ ") " ++ show expr
   show (SApp abstr expr) = show abstr ++ " " ++ show expr
 
 
 -- | Highish-level lambda calculus that supports multi-argument abstraction
 --   and application, 'let ... in ...' and '... where ...'.
-data NiceLambda = Literal Literal
+data NiceLambda = Int Int
                 | Var String
                 | Abstr [String] NiceLambda
                 | App NiceLambda [NiceLambda]
@@ -74,8 +73,8 @@ checkSyntax _ = Nothing
 -- | λx,y.z  =>  λx.λy.z
 --   e x y   =>  (e x) y
 translateMultiArg :: NiceLambda -> SimpleLambda
-translateMultiArg (Var s)     = SVar s
-translateMultiArg (Literal l) = SLiteral l
+translateMultiArg (Var s)  = SVar s
+translateMultiArg (Int i) = SInt i
 translateMultiArg (Abstr [name] body)
   = SAbstr name (translateMultiArg body)
 translateMultiArg (Abstr (name:restNames) body)
@@ -115,7 +114,7 @@ deBruijnify (SApp abstr arg) = SApp (deBruijnify abstr) (deBruijnify arg)
 deBruijnify otherwise_ = otherwise_
 
 extractDeBruijnLambda :: SimpleLambda -> DeBruijnLambda
-extractDeBruijnLambda (SLiteral l)     = DLiteral l
+extractDeBruijnLambda (SInt i)         = DInt i
 extractDeBruijnLambda (SDeBruijnVar n) = DVar n
 extractDeBruijnLambda (SDeBruijnAbstr body) = DAbstr $ extractDeBruijnLambda body
 extractDeBruijnLambda (SApp abstr arg) = DApp (extractDeBruijnLambda abstr)
@@ -129,5 +128,5 @@ process = maybeError checkSyntax $ translateLet
                                    >>> deBruijnify
 
 
-example1 = App (Var "square") [Literal $ LiteralInt 5]
+example1 = App (Var "square") [Int 5]
            `Where` [("square", Abstr ["x"] (App (Var "*") [Var "x", Var "x"]))]
